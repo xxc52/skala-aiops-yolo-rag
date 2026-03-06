@@ -17,3 +17,11 @@ DB_CONFIG={your PostgresDB URL}
 `pip install -r requirements.txt`
 - BE 실행 <br>
 `python -m uvicorn app.main:app --reload --port 8008`
+
+
+### 프론트엔드 실행
+```
+cd SKALA_DEMO_LIM/vue-app
+npm install
+npm run dev
+```
