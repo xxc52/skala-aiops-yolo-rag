@@ -1,27 +1,27 @@
-# Web framework
-fastapi>=0.111.0
-uvicorn[standard]>=0.29.0
-python-multipart>=0.0.9
+# 핵심 프레임워크 및 API
+fastapi==0.135.1
+uvicorn==0.41.0
+openai==2.26.0
 
-# ML / YOLO
+# YOLO (이미지 분석)
 ultralytics==8.4.19
+opencv-python==4.13.0.92
 torch==2.10.0
 torchvision==0.25.0
 
-# STT / TTS
-faster-whisper>=1.0.0
-openai>=1.30.0
-requests>=2.31.0
+# RAG 및 문서 처리
+langchain-community==0.4.1
+langchain-core==1.2.17
+langchain-text-splitters==1.1.1
+pypdf==6.7.5
 
-# RAG / VectorDB
-sqlalchemy[asyncio]>=2.0.0
-asyncpg>=0.29.0
-langchain-community>=0.2.0
-langchain-text-splitters>=0.2.0
-pypdf>=4.0.0
+# 데이터베이스 (PostgreSQL + 비동기)
+SQLAlchemy==2.0.48
+asyncpg==0.31.0
+greenlet==3.3.2
 
-# Utils
-numpy>=1.26.0
-pillow>=10.0.0
-pydantic>=2.0.0
-python-dotenv>=1.0.0
+# 유틸리티
+python-dotenv==1.2.2
+pydantic==2.12.5
+numpy==2.4.2
+pillow==12.1.1
