@@ -1,0 +1,190 @@
+@import "tailwindcss";
+
+/* ─── iOS 26 / Liquid Glass Design System ─── */
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.13);
+  --glass-border: rgba(255, 255, 255, 0.28);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.12);
+  --glass-blur: blur(28px) saturate(180%) brightness(1.05);
+  --recording-glow: rgba(255, 59, 48, 0.45);
+  --font-sys: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    system-ui, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: var(--font-sys);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Glass Button ─── */
+.glass-btn {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  cursor: pointer;
+  outline: none;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background 0.2s ease, box-shadow 0.25s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.glass-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 35% 30%,
+    rgba(255, 255, 255, 0.22) 0%,
+    transparent 60%
+  );
+  pointer-events: none;
+}
+
+.glass-btn:active:not(:disabled) {
+  transform: scale(0.9);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.glass-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Recording / active state */
+.glass-btn.is-recording {
+  background: rgba(255, 59, 48, 0.28);
+  border-color: rgba(255, 100, 80, 0.55);
+  animation: btn-record-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes btn-record-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--recording-glow), var(--glass-shadow);
+  }
+  50% {
+    box-shadow: 0 0 0 12px rgba(255, 59, 48, 0), var(--glass-shadow);
+  }
+}
+
+/* ─── Glass Panel (floating info / recording pill) ─── */
+.glass-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+}
+
+/* ─── Response Text Panel ─── */
+.response-panel {
+  background: rgba(10, 10, 14, 0.62);
+  backdrop-filter: blur(36px) saturate(160%);
+  -webkit-backdrop-filter: blur(36px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 22px;
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* ─── Processing spinner panel ─── */
+.processing-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.13);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: var(--glass-shadow);
+}
+
+/* ─── Camera shutter flash ─── */
+.shutter-flash {
+  animation: flash 0.18s ease-out forwards;
+}
+@keyframes flash {
+  0% { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+
+/* ─── Waveform dots (recording animation) ─── */
+.wave-dot {
+  width: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.9);
+  animation: wave-bounce 0.9s ease-in-out infinite;
+}
+.wave-dot:nth-child(1) { animation-delay: 0s;    height: 8px; }
+.wave-dot:nth-child(2) { animation-delay: 0.15s; height: 14px; }
+.wave-dot:nth-child(3) { animation-delay: 0.3s;  height: 10px; }
+.wave-dot:nth-child(4) { animation-delay: 0.15s; height: 16px; }
+.wave-dot:nth-child(5) { animation-delay: 0s;    height: 8px; }
+
+@keyframes wave-bounce {
+  0%, 100% { transform: scaleY(1); opacity: 0.7; }
+  50%       { transform: scaleY(1.8); opacity: 1; }
+}
+
+/* ─── Fade-in for response panel ─── */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.slide-up {
+  animation: slide-up 0.3s cubic-bezier(0.34, 1.2, 0.64, 1) forwards;
+}
+
+/* ─── Skeleton pulse (manager page) ─── */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 0.85; }
+}
+
+/* ─── Spinner ─── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
