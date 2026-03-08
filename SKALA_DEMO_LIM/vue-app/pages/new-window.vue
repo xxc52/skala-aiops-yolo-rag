@@ -5,6 +5,8 @@ import ThemeDropdown from '../components/ThemeDropdown.vue'
 import SkeletonCard from '../components/SkeletonCard.vue'
 import ImageCard from '../components/ImageCard.vue'
 
+const backendUrl = ""  // same-origin proxy via vite
+
 function shortUUID(uuid) {
   return uuid.slice(0, 8).toUpperCase();
 }
@@ -32,6 +34,21 @@ const cleared = ref(false);
 const toast = ref(null);
 const toastTimer = ref(null);
 
+// 병해충 클래스 목록
+const pestClasses = ref([]);
+
+// 보고서 탭
+const reportType = ref("weekly");
+const reportContent = ref("");
+const reportMeta = ref(null);
+const isLoadingReport = ref(false);
+const isGeneratingReport = ref(false);
+
+// 설정 탭
+const currentThreshold = ref(0.4);
+const editingThreshold = ref(0.4);
+const isSavingThreshold = ref(false);
+
 /* ─── Derived ─── */
 const isDark = computed(
   () => theme.value === "dark" || (theme.value === "device" && systemDark.value)
@@ -48,14 +65,41 @@ const canSend = computed(
 );
 
 /* ─── Detect system theme ─── */
-onMounted(() => {
+onMounted(async () => {
   const mq = window.matchMedia("(prefers-color-scheme: dark)");
   systemDark.value = mq.matches;
-  const handler = (e) => {
-    systemDark.value = e.matches;
-  };
+  const handler = (e) => { systemDark.value = e.matches; };
   mq.addEventListener("change", handler);
   onUnmounted(() => mq.removeEventListener("change", handler));
+
+  // 병해충 클래스 목록 fetch
+  try {
+    const res = await fetch(`${backendUrl}/api/manager/classes`);
+    const data = await res.json();
+    pestClasses.value = data.classes ?? [];
+  } catch {
+    pestClasses.value = [
+      { code: "1", name: "갈색반점병" },
+      { code: "3", name: "검은점무늬병" },
+      { code: "7", name: "그을음병" },
+      { code: "11", name: "잎마름병" },
+      { code: "12", name: "잎말이나방" },
+      { code: "13", name: "줄기썩음병" },
+      { code: "15", name: "총채벌레" },
+      { code: "16", name: "탄저병" },
+      { code: "17", name: "흰가루병" },
+      { code: "20", name: "점무늬병" },
+      { code: "999", name: "정상" },
+    ];
+  }
+
+  // 설정 탭 - 현재 threshold 로드
+  try {
+    const res = await fetch(`${backendUrl}/api/manager/config`);
+    const data = await res.json();
+    currentThreshold.value = data.conf_threshold;
+    editingThreshold.value = data.conf_threshold;
+  } catch {}
 });
 
 /* ─── Fake data for testing mode (no server needed) ─── */
@@ -82,7 +126,7 @@ async function fetchImages() {
   }
 
   try {
-    const res = await fetch("/api/manager/images");
+    const res = await fetch(`${backendUrl}/api/manager/images`);
     if (!res.ok) throw new Error();
     const data = await res.json();
     images.value = data.images ?? [];
@@ -95,13 +139,75 @@ async function fetchImages() {
 
 watch(testing, fetchImages, { immediate: true });
 
+/* ─── 보고서 fetch ─── */
+async function fetchReport() {
+  isLoadingReport.value = true;
+  reportContent.value = "";
+  reportMeta.value = null;
+  try {
+    const res = await fetch(`${backendUrl}/api/manager/report?type=${reportType.value}`);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    reportContent.value = data.content;
+    reportMeta.value = { period_start: data.period_start, period_end: data.period_end, created_at: data.created_at };
+  } catch {
+    reportContent.value = "";
+  } finally {
+    isLoadingReport.value = false;
+  }
+}
+
+watch(reportType, fetchReport);
+
+async function generateReport() {
+  isGeneratingReport.value = true;
+  try {
+    const res = await fetch(`${backendUrl}/api/manager/report/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: reportType.value }),
+    });
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    reportContent.value = data.content;
+    reportMeta.value = { period_start: data.period_start, period_end: data.period_end, created_at: data.created_at };
+    showToast("success", "보고서가 생성되었습니다.");
+  } catch {
+    showToast("error", "보고서 생성에 실패했습니다.");
+  } finally {
+    isGeneratingReport.value = false;
+  }
+}
+
+/* ─── 보고서 탭 활성화 시 자동 fetch ─── */
+watch(activeTab, (tab) => {
+  if (tab === "report") fetchReport();
+});
+
+/* ─── 설정 저장 ─── */
+async function saveThreshold() {
+  isSavingThreshold.value = true;
+  try {
+    const res = await fetch(`${backendUrl}/api/manager/config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conf_threshold: editingThreshold.value }),
+    });
+    if (!res.ok) throw new Error();
+    currentThreshold.value = editingThreshold.value;
+    showToast("success", `임계값이 ${editingThreshold.value}으로 변경되었습니다.`);
+  } catch {
+    showToast("error", "저장에 실패했습니다.");
+  } finally {
+    isSavingThreshold.value = false;
+  }
+}
+
 /* ─── Toast ─── */
 function showToast(kind, msg) {
   if (toastTimer.value) clearTimeout(toastTimer.value);
   toast.value = { kind, message: msg };
-  toastTimer.value = setTimeout(() => {
-    toast.value = null;
-  }, 3000);
+  toastTimer.value = setTimeout(() => { toast.value = null; }, 3000);
 }
 
 /* ─── Handlers ─── */
@@ -116,7 +222,7 @@ async function handleSend() {
   const updates = dirty.map((uuid) => ({
     uuid,
     category: selections.value[uuid],
-      confidenceScore: images.value.find((img) => img.uuid === uuid)?.confidenceScore,
+    confidenceScore: images.value.find((img) => img.uuid === uuid)?.confidenceScore,
   }));
 
   isSending.value = true;
@@ -131,7 +237,7 @@ async function handleSend() {
   }
 
   try {
-    const res = await fetch("/api/manager/update", {
+    const res = await fetch(`${backendUrl}/api/manager/update`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ updates }),
@@ -174,6 +280,19 @@ onUnmounted(() => {
   if (ftTimer.value) clearInterval(ftTimer.value);
   if (toastTimer.value) clearTimeout(toastTimer.value);
 });
+
+/* ─── 마크다운 → HTML 간이 변환 ─── */
+function mdToHtml(md) {
+  if (!md) return "";
+  return md
+    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+    .replace(/^- (.+)$/gm, "<li>$1</li>")
+    .replace(/(<li>.*<\/li>\n?)+/g, (m) => `<ul>${m}</ul>`)
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\n\n/g, "<br/><br/>")
+    .replace(/\n/g, "<br/>");
+}
 </script>
 
 <template>
@@ -391,6 +510,7 @@ onUnmounted(() => {
             :selected="selections[rec.uuid] ?? ''"
             :is-dirty="rec.uuid in selections"
             :t="t"
+            :categories="pestClasses"
             @change="handleSelection"
           />
           <div class="flex-shrink-0 w-2" />
@@ -486,8 +606,8 @@ onUnmounted(() => {
         <div class="relative z-10 flex items-start justify-between mb-4">
           <div>
             <p :style="{ fontSize: '11px', fontWeight: 600, color: t.textTertiary, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '4px' }">현재 모델</p>
-            <p :style="{ fontSize: '17px', fontWeight: 700, color: t.textPrimary, letterSpacing: '-0.01em' }">ViT-B/16 Classifier</p>
-            <p :style="{ fontSize: '12px', color: t.textSecondary, marginTop: '2px' }">v2.3.1 · 마지막 학습: 3일 전</p>
+            <p :style="{ fontSize: '17px', fontWeight: 700, color: t.textPrimary, letterSpacing: '-0.01em' }">YOLOv8 Classifier</p>
+            <p :style="{ fontSize: '12px', color: t.textSecondary, marginTop: '2px' }">병해충 탐지 모델</p>
           </div>
           <div
             class="flex items-center gap-1.5 px-3 py-1.5 rounded-full"
@@ -499,48 +619,6 @@ onUnmounted(() => {
             <div class="w-1.5 h-1.5 rounded-full" style="background: #34c759" />
             <span :style="{ fontSize: '11px', fontWeight: 600, color: '#34c759' }">운영 중</span>
           </div>
-        </div>
-        <div class="relative z-10 flex gap-3">
-          <div
-            v-for="s in [{ label: '정확도', value: '91.4%' }, { label: '학습 샘플', value: '12,840' }, { label: '클래스', value: '5개' }]"
-            :key="s.label"
-            class="flex-1 rounded-[14px] px-3 py-2.5 text-center"
-            :style="{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', border: `1px solid ${t.separator}` }"
-          >
-            <p :style="{ fontSize: '15px', fontWeight: 700, color: t.textPrimary }">{{ s.value }}</p>
-            <p :style="{ fontSize: '10px', color: t.textTertiary, marginTop: '1px' }">{{ s.label }}</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- New data available card -->
-      <div
-        class="rounded-[24px] p-5 mb-4 relative overflow-hidden"
-        :style="{ background: t.cardBg, backdropFilter: 'blur(40px) saturate(180%)', WebkitBackdropFilter: 'blur(40px) saturate(180%)', border: `1px solid ${t.cardBorder}`, boxShadow: t.cardShadow }"
-      >
-        <div class="absolute inset-x-0 top-0 pointer-events-none" :style="{ height: '50%', background: t.cardHighlight, borderRadius: '24px 24px 0 0' }" />
-        <div class="relative z-10 flex items-center justify-between mb-3">
-          <p :style="{ fontSize: '13px', fontWeight: 600, color: t.textPrimary }">신규 학습 데이터</p>
-          <span :style="{ fontSize: '11px', color: t.textTertiary }">오늘 기준</span>
-        </div>
-        <div class="relative z-10 flex gap-2 flex-wrap">
-          <div
-            v-for="d in [{ cat: 'Class A', count: 34 }, { cat: 'Class B', count: 18 }, { cat: 'Class C', count: 27 }, { cat: 'Class D', count: 9 }, { cat: 'Class E', count: 22 }]"
-            :key="d.cat"
-            class="flex items-center gap-2 px-3 py-1.5 rounded-full"
-            :style="{ background: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)', border: `1px solid ${t.separator}` }"
-          >
-            <span :style="{ fontSize: '12px', fontWeight: 600, color: t.textPrimary }">{{ d.cat }}</span>
-            <span
-              class="rounded-full px-1.5"
-              :style="{ fontSize: '10px', fontWeight: 700, color: t.textSecondary, background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)' }"
-            >{{ d.count }}</span>
-          </div>
-        </div>
-        <div class="relative z-10 mt-3 pt-3" :style="{ borderTop: `1px solid ${t.separator}` }">
-          <p :style="{ fontSize: '12px', color: t.textSecondary }">
-            총 <span :style="{ fontWeight: 700, color: t.textPrimary }">110개</span> 신규 샘플이 학습 대기 중입니다.
-          </p>
         </div>
       </div>
 
@@ -703,13 +781,7 @@ onUnmounted(() => {
           backdropFilter: 'blur(30px) saturate(180%)',
           transition: 'all 0.22s cubic-bezier(0.34,1.2,0.64,1)',
         }"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-          <path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-        재학습
-      </button>
+      >재학습</button>
       <button
         @click="showToast('success', '모델이 성공적으로 배포되었습니다.')"
         class="pointer-events-auto flex items-center gap-2 transition-all active:scale-95"
@@ -720,16 +792,202 @@ onUnmounted(() => {
           color: isDark ? 'rgba(0,0,0,0.88)' : 'rgba(255,255,255,0.95)',
           backdropFilter: 'blur(30px) saturate(180%)',
           boxShadow: '0 6px 28px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.4)',
-          animation: 'slide-up 0.28s cubic-bezier(0.34,1.2,0.64,1) forwards',
+        }"
+      >모델 배포</button>
+    </div>
+
+    <!-- ═══════ TAB: 보고서 ═══════ -->
+    <div
+      v-if="activeTab === 'report'"
+      class="relative z-10 flex-1 overflow-y-auto"
+      :style="{
+        paddingLeft: 'clamp(16px, 3vw, 28px)',
+        paddingRight: 'clamp(16px, 3vw, 28px)',
+        paddingTop: '20px',
+        paddingBottom: '140px',
+        scrollbarWidth: 'none',
+      }"
+    >
+      <h2 :style="{ fontSize: '22px', fontWeight: 700, color: t.textPrimary, letterSpacing: '-0.02em', marginBottom: '4px' }">AI 운영 보고서</h2>
+      <p :style="{ fontSize: '14px', color: t.textSecondary, marginBottom: '20px' }">병해충 탐지 현황 및 모델 성능 분석 보고서입니다.</p>
+
+      <!-- 기간 세그먼트 버튼 -->
+      <div class="flex gap-2 mb-5">
+        <button
+          v-for="opt in [{ value: 'weekly', label: '주간' }, { value: 'monthly', label: '월간' }]"
+          :key="opt.value"
+          @click="reportType = opt.value"
+          class="flex-1 py-2.5 rounded-2xl transition-all"
+          :style="{
+            fontSize: '14px',
+            fontWeight: reportType === opt.value ? 700 : 400,
+            color: reportType === opt.value ? t.textPrimary : t.textTertiary,
+            background: reportType === opt.value ? (isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.09)') : (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'),
+            border: `1px solid ${reportType === opt.value ? t.cardBorderDirty : t.separator}`,
+          }"
+        >{{ opt.label }}</button>
+      </div>
+
+      <!-- 보고서 메타 -->
+      <p v-if="reportMeta" :style="{ fontSize: '11px', color: t.textTertiary, marginBottom: '12px' }">
+        {{ reportMeta.period_start?.slice(0,10) }} ~ {{ reportMeta.period_end?.slice(0,10) }} 기준 · 생성: {{ reportMeta.created_at?.slice(0,16).replace('T', ' ') }}
+      </p>
+
+      <!-- 보고서 카드 -->
+      <div
+        class="rounded-[24px] p-5 relative overflow-hidden"
+        :style="{ background: t.cardBg, backdropFilter: 'blur(40px) saturate(180%)', WebkitBackdropFilter: 'blur(40px) saturate(180%)', border: `1px solid ${t.cardBorder}`, boxShadow: t.cardShadow, minHeight: '160px' }"
+      >
+        <div class="absolute inset-x-0 top-0 pointer-events-none" :style="{ height: '40%', background: t.cardHighlight, borderRadius: '24px 24px 0 0' }" />
+
+        <!-- 로딩 -->
+        <div v-if="isLoadingReport" class="relative z-10 flex items-center justify-center py-12">
+          <div class="spinner" :style="{ width: '20px', height: '20px', borderColor: `${t.textTertiary}40`, borderTopColor: t.textTertiary }" />
+        </div>
+
+        <!-- 내용 없음 -->
+        <div v-else-if="!reportContent" class="relative z-10 py-8 text-center">
+          <p :style="{ fontSize: '15px', color: t.textSecondary }">아직 보고서가 없습니다.</p>
+          <p :style="{ fontSize: '13px', color: t.textTertiary, marginTop: '6px' }">아래 버튼을 눌러 보고서를 생성하세요.</p>
+        </div>
+
+        <!-- 마크다운 보고서 -->
+        <div
+          v-else
+          class="relative z-10 report-content"
+          :style="{ fontSize: '14px', lineHeight: 1.7, color: t.textPrimary }"
+          v-html="mdToHtml(reportContent)"
+        />
+      </div>
+    </div>
+
+    <!-- Floating 보고서 생성 버튼 -->
+    <div
+      v-if="activeTab === 'report'"
+      class="absolute z-40 flex justify-center pointer-events-none"
+      :style="{ bottom: 'max(calc(env(safe-area-inset-bottom, 12px) + 68px), 80px)', left: 0, right: 0 }"
+    >
+      <button
+        @click="generateReport"
+        :disabled="isGeneratingReport"
+        class="pointer-events-auto flex items-center gap-2 transition-all active:scale-95"
+        :style="{
+          padding: '12px 28px',
+          borderRadius: '999px',
+          fontSize: '15px',
+          fontWeight: 600,
+          cursor: isGeneratingReport ? 'not-allowed' : 'pointer',
+          background: isGeneratingReport
+            ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)')
+            : (isDark ? 'rgba(255,255,255,0.90)' : 'rgba(0,0,0,0.85)'),
+          border: isGeneratingReport
+            ? (isDark ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(0,0,0,0.07)')
+            : (isDark ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(0,0,0,0.18)'),
+          color: isGeneratingReport ? t.textTertiary : (isDark ? 'rgba(0,0,0,0.88)' : 'rgba(255,255,255,0.95)'),
+          backdropFilter: 'blur(30px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(30px) saturate(180%)',
+          boxShadow: isGeneratingReport ? 'none' : '0 6px 28px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.4)',
+          transition: 'all 0.22s cubic-bezier(0.34,1.2,0.64,1)',
         }"
       >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-          <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="M2 17l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-        모델 배포
+        <template v-if="isGeneratingReport">
+          <div class="spinner" :style="{ width: '13px', height: '13px', borderColor: `${t.textTertiary}50`, borderTopColor: t.textTertiary }" />
+          생성 중…
+        </template>
+        <template v-else>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2v20M2 12h20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
+          </svg>
+          보고서 생성
+        </template>
       </button>
+    </div>
+
+    <!-- ═══════ TAB: 설정 ═══════ -->
+    <div
+      v-if="activeTab === 'settings'"
+      class="relative z-10 flex-1 overflow-y-auto"
+      :style="{
+        paddingLeft: 'clamp(16px, 3vw, 28px)',
+        paddingRight: 'clamp(16px, 3vw, 28px)',
+        paddingTop: '20px',
+        paddingBottom: '140px',
+        scrollbarWidth: 'none',
+      }"
+    >
+      <h2 :style="{ fontSize: '22px', fontWeight: 700, color: t.textPrimary, letterSpacing: '-0.02em', marginBottom: '4px' }">모델 설정</h2>
+      <p :style="{ fontSize: '14px', color: t.textSecondary, marginBottom: '24px' }">신뢰도 임계값을 조정합니다.</p>
+
+      <!-- 현재 임계값 카드 -->
+      <div
+        class="rounded-[24px] p-5 mb-4 relative overflow-hidden"
+        :style="{ background: t.cardBg, backdropFilter: 'blur(40px) saturate(180%)', WebkitBackdropFilter: 'blur(40px) saturate(180%)', border: `1px solid ${t.cardBorder}`, boxShadow: t.cardShadow }"
+      >
+        <div class="absolute inset-x-0 top-0 pointer-events-none" :style="{ height: '50%', background: t.cardHighlight, borderRadius: '24px 24px 0 0' }" />
+        <div class="relative z-10 flex items-center justify-between mb-2">
+          <p :style="{ fontSize: '13px', fontWeight: 600, color: t.textPrimary }">현재 적용 임계값</p>
+          <span
+            :style="{
+              fontSize: '22px', fontWeight: 700, color: t.tint,
+              fontVariantNumeric: 'tabular-nums',
+            }"
+          >{{ currentThreshold.toFixed(2) }}</span>
+        </div>
+        <p :style="{ fontSize: '12px', color: t.textSecondary }">
+          임계값 이하의 탐지 결과는 관리자 검수 대기열로 이동됩니다.
+        </p>
+      </div>
+
+      <!-- 임계값 조정 카드 -->
+      <div
+        class="rounded-[24px] p-5 relative overflow-hidden"
+        :style="{ background: t.cardBg, backdropFilter: 'blur(40px) saturate(180%)', WebkitBackdropFilter: 'blur(40px) saturate(180%)', border: `1px solid ${t.cardBorder}`, boxShadow: t.cardShadow }"
+      >
+        <div class="absolute inset-x-0 top-0 pointer-events-none" :style="{ height: '50%', background: t.cardHighlight, borderRadius: '24px 24px 0 0' }" />
+        <div class="relative z-10 flex items-center justify-between mb-4">
+          <p :style="{ fontSize: '13px', fontWeight: 600, color: t.textPrimary }">새 임계값 설정</p>
+          <span :style="{ fontSize: '18px', fontWeight: 700, color: t.textPrimary }">{{ editingThreshold.toFixed(2) }}</span>
+        </div>
+
+        <!-- 슬라이더 -->
+        <div class="relative z-10 mb-5">
+          <input
+            type="range" min="0.1" max="0.9" step="0.05"
+            v-model.number="editingThreshold"
+            class="w-full"
+            :style="{ accentColor: isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.75)', height: '4px' }"
+          />
+          <div class="flex justify-between mt-1">
+            <span :style="{ fontSize: '10px', color: t.textTertiary }">0.10</span>
+            <span :style="{ fontSize: '10px', color: t.textTertiary }">0.90</span>
+          </div>
+        </div>
+
+        <!-- 적용 버튼 -->
+        <button
+          @click="saveThreshold"
+          :disabled="isSavingThreshold || editingThreshold === currentThreshold"
+          class="relative z-10 w-full py-3 rounded-2xl transition-all active:scale-[0.98]"
+          :style="{
+            fontSize: '14px',
+            fontWeight: 600,
+            cursor: (isSavingThreshold || editingThreshold === currentThreshold) ? 'not-allowed' : 'pointer',
+            background: (isSavingThreshold || editingThreshold === currentThreshold)
+              ? (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)')
+              : (isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.09)'),
+            color: (isSavingThreshold || editingThreshold === currentThreshold) ? t.textTertiary : t.textPrimary,
+            border: `1px solid ${t.separator}`,
+            transition: 'all 0.15s ease',
+          }"
+        >
+          <template v-if="isSavingThreshold">
+            저장 중…
+          </template>
+          <template v-else>
+            적용
+          </template>
+        </button>
+      </div>
     </div>
 
     <!-- ═══════ FLOATING TAB BAR ═══════ -->
@@ -768,12 +1026,14 @@ onUnmounted(() => {
           v-for="tab in [
             { id: 'inspect', label: '검수' },
             { id: 'finetune', label: '파인튜닝' },
+            { id: 'report', label: '보고서' },
+            { id: 'settings', label: '설정' },
           ]"
           :key="tab.id"
           @click="activeTab = tab.id"
           class="relative z-10 flex items-center gap-2 transition-all active:scale-95"
           :style="{
-            padding: '8px 20px',
+            padding: '8px 16px',
             borderRadius: '999px',
             background: activeTab === tab.id ? (isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)') : 'transparent',
             border: 'none',
@@ -784,20 +1044,32 @@ onUnmounted(() => {
             letterSpacing: '-0.01em',
           }"
         >
-          <!-- Inspect icon -->
-          <svg v-if="tab.id === 'inspect'" width="20" height="20" viewBox="0 0 24 24" :fill="activeTab === 'inspect' ? 'currentColor' : 'none'">
+          <!-- 검수 icon -->
+          <svg v-if="tab.id === 'inspect'" width="16" height="16" viewBox="0 0 24 24" :fill="activeTab === 'inspect' ? 'currentColor' : 'none'">
             <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2" />
             <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2" />
             <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2" />
             <rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2" />
           </svg>
-          <!-- Fine-tune icon -->
-          <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+          <!-- 파인튜닝 icon -->
+          <svg v-else-if="tab.id === 'finetune'" width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-              :fill="activeTab === 'finetune' ? 'currentColor' : 'none'"
-              :fill-opacity="activeTab === 'finetune' ? 0.18 : 0"
+              :fill="activeTab === 'finetune' ? 'currentColor' : 'none'" :fill-opacity="activeTab === 'finetune' ? 0.18 : 0"
+            />
+          </svg>
+          <!-- 보고서 icon -->
+          <svg v-else-if="tab.id === 'report'" width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :fill="activeTab === 'report' ? 'currentColor' : 'none'" :fill-opacity="activeTab === 'report' ? 0.15 : 0" />
+            <polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            <line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          <!-- 설정 icon -->
+          <svg v-else-if="tab.id === 'settings'" width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" :fill="activeTab === 'settings' ? 'currentColor' : 'none'" :fill-opacity="activeTab === 'settings' ? 0.25 : 0" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
             />
           </svg>
           {{ tab.label }}

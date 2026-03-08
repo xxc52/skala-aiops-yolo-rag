@@ -74,15 +74,56 @@ class RAG:
                     embedding VECTOR(1536)
                 );
             """))
-            
+
             result = await session.execute(text("SELECT COUNT(*) FROM crop_knowledge;"))
             if result.scalar() == 0:
                 await self._ingest_from_pdf(session)
-            
+
             await session.execute(text("""
-                CREATE INDEX IF NOT EXISTS crop_hnsw_idx 
+                CREATE INDEX IF NOT EXISTS crop_hnsw_idx
                 ON crop_knowledge USING hnsw (embedding vector_cosine_ops);
             """))
+
+            # AIOps 테이블 추가
+            await session.execute(text("""
+                CREATE TABLE IF NOT EXISTS detection_events (
+                    id          SERIAL PRIMARY KEY,
+                    uuid        TEXT NOT NULL UNIQUE,
+                    image_path  TEXT,
+                    pest_code   TEXT,
+                    confidence  FLOAT,
+                    is_low_conf BOOLEAN DEFAULT FALSE,
+                    review_status TEXT DEFAULT 'pending',
+                    human_label TEXT,
+                    created_at  TIMESTAMP DEFAULT NOW(),
+                    reviewed_at TIMESTAMP
+                );
+            """))
+
+            await session.execute(text("""
+                CREATE TABLE IF NOT EXISTS aiops_reports (
+                    id           SERIAL PRIMARY KEY,
+                    period_type  TEXT NOT NULL,
+                    period_start TIMESTAMP NOT NULL,
+                    period_end   TIMESTAMP NOT NULL,
+                    content      TEXT NOT NULL,
+                    created_at   TIMESTAMP DEFAULT NOW()
+                );
+            """))
+
+            await session.execute(text("""
+                CREATE TABLE IF NOT EXISTS model_config (
+                    key   TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+            """))
+
+            await session.execute(text("""
+                INSERT INTO model_config (key, value)
+                VALUES ('conf_threshold', '0.4')
+                ON CONFLICT (key) DO NOTHING;
+            """))
+
             await session.commit()
 
     async def _ingest_from_pdf(self, session: AsyncSession):

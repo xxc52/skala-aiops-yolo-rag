@@ -16,3 +16,4 @@ node_modules/
 .vite/
 dist/
 build/
+yolo_rag/

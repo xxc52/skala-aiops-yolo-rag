@@ -1,15 +1,36 @@
+import shutil
 import uuid
 from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
+from sqlalchemy import text
 
 from app.config import settings
-from app.repositories.detection_log import save_detection_log
 from app.schemas import ClassificationResult
 
 router = APIRouter(prefix="/api")
+
+
+async def _save_detection_event(rag, event_uuid: str, image_path: str | None,
+                                pest_code: str | None, confidence: float | None,
+                                is_low_conf: bool, review_status: str):
+    """detection_events 테이블에 탐지 이벤트 저장"""
+    async with rag.SessionLocal() as session:
+        await session.execute(text("""
+            INSERT INTO detection_events
+                (uuid, image_path, pest_code, confidence, is_low_conf, review_status)
+            VALUES (:uuid, :image_path, :pest_code, :confidence, :is_low_conf, :review_status)
+        """), {
+            "uuid": event_uuid,
+            "image_path": image_path,
+            "pest_code": pest_code,
+            "confidence": confidence,
+            "is_low_conf": is_low_conf,
+            "review_status": review_status,
+        })
+        await session.commit()
 
 
 @router.post("/analyze")
@@ -22,26 +43,59 @@ async def analyze(
 ):
     classifier = request.app.state.classifier
     rag = request.app.state.rag
+    threshold = getattr(request.app.state, "conf_threshold", 0.4)
 
     # 1. 이미지 유무에 따른 시나리오 분기
     context_pest = None
     if image and image.filename:
         img_ext = Path(image.filename).suffix
-        img_path = settings.upload_dir / f"{uuid.uuid4()}{img_ext}"
+        img_uuid = str(uuid.uuid4())
+        img_path = settings.upload_dir / f"{img_uuid}{img_ext}"
         with open(img_path, "wb") as f:
             f.write(await image.read())
-        background_tasks.add_task(img_path.unlink, missing_ok=True)
 
-        prediction = classifier.predict(str(img_path))
+        prediction = classifier.predict(str(img_path), threshold=threshold)
         if not prediction:
+            # 탐지 결과 없음 - 이미지 삭제
+            background_tasks.add_task(img_path.unlink, missing_ok=True)
             return {"detected": False, "message": "병충해가 감지되지 않았습니다. 선명하게 다시 촬영해 주세요."}
 
-        context_pest = prediction.get("pest_code")
-        save_detection_log(ClassificationResult(
-            img_path=str(img_path),
+        if prediction["is_low_conf"]:
+            # 저신뢰도 - 이미지를 review 디렉토리에 보관
+            review_path = settings.review_dir / f"{img_uuid}.jpg"
+            shutil.copy2(str(img_path), str(review_path))
+            background_tasks.add_task(img_path.unlink, missing_ok=True)
+
+            background_tasks.add_task(
+                lambda uid=img_uuid, rp=str(review_path), pred=prediction: None
+            )
+            # DB 저장 (pending)
+            await _save_detection_event(
+                rag=rag,
+                event_uuid=img_uuid,
+                image_path=str(review_path),
+                pest_code=prediction["pest_code"],
+                confidence=prediction["confidence"],
+                is_low_conf=True,
+                review_status="pending",
+            )
+            return {
+                "detected": False,
+                "message": "저화질 이미지입니다. 관리자 검수 후 반영됩니다.",
+            }
+
+        # 고신뢰도 - DB 저장 (approved)
+        await _save_detection_event(
+            rag=rag,
+            event_uuid=img_uuid,
+            image_path=str(img_path),
             pest_code=prediction["pest_code"],
             confidence=prediction["confidence"],
-        ))
+            is_low_conf=False,
+            review_status="approved",
+        )
+        background_tasks.add_task(img_path.unlink, missing_ok=True)
+        context_pest = prediction["pest_code"]
 
     # 2. 오디오 저장
     audio_ext = Path(audio.filename).suffix

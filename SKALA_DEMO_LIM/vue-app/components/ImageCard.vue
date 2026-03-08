@@ -1,13 +1,15 @@
 <script setup>
 import { ref, watch, onUnmounted } from 'vue'
 
-const CATEGORIES = ["Class A", "Class B", "Class C", "Class D", "Class E"];
-
 const props = defineProps({
   record: Object,
   selected: String,
   isDirty: Boolean,
   t: Object,
+  categories: {
+    type: Array,
+    default: () => [],
+  },
 });
 
 const emit = defineEmits(["change"]);
@@ -174,14 +176,14 @@ function shortUUID(uuid) {
           }"
         >
           <button
-            v-for="(cat, i) in CATEGORIES"
-            :key="cat"
-            @click="emit('change', record.uuid, cat); open = false"
+            v-for="(cat, i) in categories"
+            :key="cat.code"
+            @click="emit('change', record.uuid, cat.name); open = false"
             class="w-full text-left px-4 py-3 flex items-center gap-3"
             :style="{
               fontSize: '14px',
-              fontWeight: selected === cat ? 600 : 400,
-              color: selected === cat ? t.tint : t.textPrimary,
+              fontWeight: selected === cat.name ? 600 : 400,
+              color: selected === cat.name ? t.tint : t.textPrimary,
               background: 'transparent',
               borderTop: i > 0 ? `1px solid ${t.separator}` : 'none',
               transition: 'background 0.1s',
@@ -190,11 +192,11 @@ function shortUUID(uuid) {
             @mouseleave="$event.currentTarget.style.background = 'transparent'"
           >
             <span :style="{ width: '16px', display: 'flex', alignItems: 'center', flexShrink: 0 }">
-              <svg v-if="selected === cat" width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <svg v-if="selected === cat.name" width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <path d="M5 12l5 5L20 7" :stroke="t.tint" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
             </span>
-            {{ cat }}
+            {{ cat.name }}
           </button>
         </div>
       </div>

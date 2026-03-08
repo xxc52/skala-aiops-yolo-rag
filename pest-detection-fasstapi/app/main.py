@@ -2,9 +2,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.config import settings
-from app.routers import analyze
+from app.routers import analyze, manager
 from app.services.classifier_service import PestClassifier
 from app.services.rag import RAG
 
@@ -19,6 +20,16 @@ async def lifespan(app: FastAPI):
     await rag.initialize_db()
     app.state.rag = rag
     print("RAG 초기화 완료")
+
+    # DB에서 conf_threshold 로드
+    async with rag.SessionLocal() as session:
+        result = await session.execute(
+            text("SELECT value FROM model_config WHERE key = 'conf_threshold'")
+        )
+        row = result.fetchone()
+        app.state.conf_threshold = float(row[0]) if row else 0.4
+    print(f"신뢰도 임계값: {app.state.conf_threshold}")
+
     yield
 
 
@@ -33,5 +44,6 @@ app.add_middleware(
 )
 
 app.include_router(analyze.router)
+app.include_router(manager.router)
 
 # python -m uvicorn app.main:app --reload --port 8000
