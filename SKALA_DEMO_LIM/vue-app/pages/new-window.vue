@@ -1,9 +1,12 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { tokens } from "~/utils/tokens"
 import ThemeDropdown from '../components/ThemeDropdown.vue'
 import SkeletonCard from '../components/SkeletonCard.vue'
 import ImageCard from '../components/ImageCard.vue'
+
+const router = useRouter()
 
 function shortUUID(uuid) {
   return uuid.slice(0, 8).toUpperCase();
@@ -47,8 +50,20 @@ const canSend = computed(
   () => pendingCount.value > 0 && !isSending.value && !isDone.value
 );
 
-/* ─── Detect system theme ─── */
+/* ─── Authentication Check ─── */
+function getAuthHeader() {
+  const token = localStorage.getItem("admin_token");
+  return token ? { "Authorization": `Bearer ${token}` } : {};
+}
+
 onMounted(() => {
+  // Check if token exists, if not redirect to home
+  const token = localStorage.getItem("admin_token");
+  if (!token) {
+    router.push("/");
+    return;
+  }
+
   const mq = window.matchMedia("(prefers-color-scheme: dark)");
   systemDark.value = mq.matches;
   const handler = (e) => {
@@ -82,7 +97,14 @@ async function fetchImages() {
   }
 
   try {
-    const res = await fetch("/api/manager/images");
+    const res = await fetch("http://localhost:3001/api/manager/images", {
+      headers: { ...getAuthHeader() }
+    });
+    if (res.status === 401 || res.status === 403) {
+      localStorage.removeItem("admin_token");
+      router.push("/");
+      return;
+    }
     if (!res.ok) throw new Error();
     const data = await res.json();
     images.value = data.images ?? [];
@@ -131,11 +153,19 @@ async function handleSend() {
   }
 
   try {
-    const res = await fetch("/api/manager/update", {
+    const res = await fetch("http://localhost:3001/api/manager/update", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        ...getAuthHeader()
+      },
       body: JSON.stringify({ updates }),
     });
+    if (res.status === 401 || res.status === 403) {
+      localStorage.removeItem("admin_token");
+      router.push("/");
+      return;
+    }
     if (!res.ok) throw new Error();
     const data = await res.json();
     showToast("success", `${data.updatedCount}건이 업데이트되었습니다.`);

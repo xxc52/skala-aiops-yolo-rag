@@ -3,12 +3,16 @@ import { createRouter, createWebHistory } from 'vue-router'
 import App from '../app.vue'
 import IndexPage from '../pages/index.vue'
 import NewWindowPage from '../pages/new-window.vue'
+import LoginPage from '../pages/login.vue'
+import RegisterPage from '../pages/register.vue'
 import '../assets/css/main.css'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', component: IndexPage },
+    { path: '/login', component: LoginPage },
+    { path: '/register', component: RegisterPage },
     { path: '/new-window', component: NewWindowPage },
   ],
 })

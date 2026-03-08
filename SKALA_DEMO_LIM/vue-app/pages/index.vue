@@ -256,7 +256,7 @@ const SAMPLE_AUDIO = {
 const SAMPLE_TEXT = {
   ko: "테스트 응답입니다.",
   vi: "Đây là phản hồi thử nghiệm.",
-  th: "นี่คือการตอบกลับทดสอบ",
+  th: "นี่คือ하는 การตอบกลับทดสอบ",
 };
 
 /* ─── Shared: call /analyze with optional image ─── */
@@ -332,9 +332,9 @@ async function handleButtonB() {
   }
 }
 
-/* ─── Button C: Navigate ─── */
+/* ─── Button C: Navigate to Login ─── */
 function handleButtonC() {
-  router.push("/new-window");
+  router.push('/login');
 }
 
 /* ─── Dismiss response ─── */
@@ -658,3 +658,124 @@ function selectLanguage(code) {
     </div>
   </main>
 </template>
+
+<style scoped>
+/* ─── Buttons ─── */
+.glass-btn {
+  width: clamp(44px, 8vh, 54px);
+  height: clamp(44px, 8vh, 54px);
+  border-radius: 18px;
+  background: rgba(255,255,255,0.12);
+  backdrop-filter: blur(20px) saturate(180%);
+  WebkitBackdropFilter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255,255,255,0.22);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.glass-btn:active {
+  transform: scale(0.92);
+  background: rgba(255,255,255,0.18);
+}
+
+.glass-btn.is-recording {
+  background: rgba(255, 59, 48, 0.45);
+  border-color: rgba(255, 59, 48, 0.5);
+  box-shadow: 0 0 24px rgba(255, 59, 48, 0.35), inset 0 1px 0 rgba(255,255,255,0.2);
+  animation: pulse-red 2s infinite;
+}
+
+@keyframes pulse-red {
+  0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.4); }
+  70% { box-shadow: 0 0 0 12px rgba(255, 59, 48, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
+}
+
+/* ─── Panels ─── */
+.response-panel {
+  background: rgba(28, 28, 30, 0.75);
+  backdrop-filter: blur(35px) saturate(190%);
+  WebkitBackdropFilter: blur(35px) saturate(190%);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 24px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+
+.processing-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 32px;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(25px);
+  border-radius: 30px;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* ─── Spinner ─── */
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 2.5px solid rgba(255,255,255,0.15);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── Pill & Dots ─── */
+.glass-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: rgba(255,255,255,0.12);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+.wave-dot {
+  width: 3px;
+  height: 3px;
+  background: #ff3b30;
+  border-radius: 50%;
+  animation: wave 1.2s infinite ease-in-out;
+}
+.wave-dot:nth-child(2) { animation-delay: 0.1s; }
+.wave-dot:nth-child(3) { animation-delay: 0.2s; }
+.wave-dot:nth-child(4) { animation-delay: 0.3s; }
+.wave-dot:nth-child(5) { animation-delay: 0.4s; }
+
+@keyframes wave {
+  0%, 100% { transform: translateY(0); opacity: 0.4; }
+  50% { transform: translateY(-5px); opacity: 1; height: 10px; }
+}
+
+/* ─── Animations ─── */
+.slide-up {
+  animation: slide-up 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes slide-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.shutter-flash {
+  animation: flash 0.2s ease-out forwards;
+}
+
+@keyframes flash {
+  from { opacity: 0.8; }
+  to { opacity: 0; }
+}
+</style>
